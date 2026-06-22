@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Fichier — Scan de livres</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.12.1/JsBarcode.all.min.js"></script>
+<style>
+  :root{
+    --paper:#F7F3EA;
+    --paper-dark:#EFE8D8;
+    --ink:#2B2A28;
+    --ink-soft:#5C574C;
+    --stamp:#8B3A3A;
+    --stamp-dark:#6E2C2C;
+    --cloth:#3B5249;
+    --manila:#C9BD9E;
+    --line:#D8CFB8;
+    --ok:#3B5249;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    padding-bottom:40px;
+  }
+  .wrap{max-width:680px; margin:0 auto; padding:18px 16px 60px;}
+
+  header.top{
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom:2px solid var(--ink); padding-bottom:10px; margin-bottom:18px;
+  }
+  header.top h1{
+    font-family:'Fraunces', serif; font-weight:700; font-size:26px; margin:0;
+    letter-spacing:-0.01em;
+  }
+  header.top .tag{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--ink-soft);
+    text-transform:uppercase; letter-spacing:.08em;
+  }
+
+  /* Scanner card */
+  .scanner-card{
+    background:var(--ink); border-radius:4px; overflow:hidden; position:relative;
+    aspect-ratio: 4/3; margin-bottom:6px;
+    border:1px solid var(--ink);
+  }
+  .scanner-card video{width:100%; height:100%; object-fit:cover; display:block;}
+  .scan-overlay{
+    position:absolute; inset:0; pointer-events:none;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .scan-frame{
+    width:78%; height:42%; border:2px solid #E8C766;
+    border-radius:6px; box-shadow:0 0 0 9999px rgba(0,0,0,0.32);
+    position:relative;
+  }
+  .scan-frame::before, .scan-frame::after{
+    content:''; position:absolute; width:18px; height:18px; border-color:#E8C766;
+  }
+  .scan-line{
+    position:absolute; left:6%; right:6%; height:2px; background:#E8C766;
+    box-shadow:0 0 8px #E8C766; animation: sweep 1.8s ease-in-out infinite;
+  }
+  @keyframes sweep{
+    0%{ top:8%; } 50%{ top:88%; } 100%{ top:8%; }
+  }
+  .scanner-idle, .scanner-error{
+    position:absolute; inset:0; display:flex; flex-direction:column; gap:10px;
+    align-items:center; justify-content:center; color:var(--paper); text-align:center; padding:24px;
+  }
+  .scanner-idle p, .scanner-error p{margin:0; font-size:13.5px; color:#D8CFB8; max-width:380px; line-height:1.5;}
+  .btn{
+    font-family:'IBM Plex Mono', monospace; font-size:13px; font-weight:600;
+    letter-spacing:.04em; text-transform:uppercase;
+    border:none; border-radius:3px; padding:13px 22px; cursor:pointer;
+    transition: transform .08s ease, opacity .15s ease;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-stamp{background:var(--stamp); color:var(--paper);}
+  .btn-stamp:hover{background:var(--stamp-dark);}
+  .btn-ghost{background:transparent; color:var(--ink); border:1.5px solid var(--ink);}
+  .btn-cloth{background:var(--cloth); color:var(--paper);}
+  .btn:disabled{opacity:.45; cursor:default;}
+
+  .last-scan{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-soft);
+    min-height:18px; margin:8px 2px 18px; display:flex; justify-content:space-between;
+  }
+  .last-scan b{color:var(--cloth);}
+
+  .scan-controls{display:flex; gap:8px; margin-top:10px;}
+
+  .manual-entry{
+    background:var(--paper-dark); border:1px solid var(--line); border-radius:4px;
+    padding:14px; margin-top:10px;
+  }
+  .manual-label{
+    font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--ink-soft); display:block; margin-bottom:8px;
+  }
+  .manual-row{display:flex; gap:8px;}
+  .manual-row input{
+    flex:1; font-family:'IBM Plex Mono', monospace; font-size:15px; padding:11px 12px;
+    border:1.5px solid var(--ink); border-radius:3px; background:#fff; color:var(--ink);
+    min-width:0;
+  }
+  .manual-row input:focus{outline:none; border-color:var(--cloth);}
+  .manual-hint{font-size:11.5px; color:var(--ink-soft); margin:8px 0 0; line-height:1.4;}
+
+  /* Toolbar */
+  .toolbar{
+    display:flex; gap:8px; align-items:center; margin:24px 0 14px;
+    border-top:1px solid var(--line); padding-top:18px;
+  }
+  .search{
+    flex:1; font-family:'Inter'; font-size:14px; background:var(--paper-dark);
+    border:1px solid var(--line); border-radius:3px; padding:10px 12px; color:var(--ink);
+  }
+  .search:focus{outline:none; border-color:var(--cloth);}
+  .filter-pills{display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;}
+  .pill{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; text-transform:uppercase;
+    letter-spacing:.05em; padding:6px 11px; border-radius:20px; border:1px solid var(--manila);
+    background:transparent; color:var(--ink-soft); cursor:pointer;
+  }
+  .pill.active{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+
+  .stats{
+    font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--ink-soft);
+    margin-bottom:14px; display:flex; gap:16px;
+  }
+  .stats span b{color:var(--ink); font-weight:600;}
+
+  /* Cards / fiches */
+  .card{
+    background:#fff; border:1px solid var(--line); border-radius:3px;
+    padding:14px; margin-bottom:10px; position:relative;
+    box-shadow: 2px 2px 0 rgba(43,42,40,0.04);
+  }
+  .card.traite{opacity:.55;}
+  .card-top{display:flex; gap:12px;}
+  .barcode-thumb{
+    flex-shrink:0; width:118px; background:#fff; border:1px solid var(--line);
+    border-radius:2px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; padding:4px;
+  }
+  .barcode-thumb svg{width:100%; height:auto; display:block;}
+  .card-info{flex:1; min-width:0;}
+  .card-title{font-family:'Fraunces', serif; font-weight:600; font-size:15.5px; line-height:1.25; margin:0 0 2px;}
+  .card-author{font-size:12.5px; color:var(--ink-soft); margin:0 0 6px;}
+  .card-isbn{font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--ink-soft); letter-spacing:.02em;}
+  .card-date{font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--manila); margin-top:3px;}
+  .card-actions{display:flex; gap:6px; margin-top:10px;}
+  .icon-btn{
+    font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase;
+    letter-spacing:.04em; background:transparent; border:1px solid var(--line);
+    border-radius:3px; padding:6px 10px; color:var(--ink-soft); cursor:pointer;
+  }
+  .icon-btn.done{border-color:var(--ok); color:var(--ok);}
+  .icon-btn.del{border-color:var(--stamp); color:var(--stamp);}
+
+  .empty{
+    text-align:center; padding:50px 20px; color:var(--ink-soft);
+  }
+  .empty p{font-family:'Fraunces', serif; font-size:16px; max-width:320px; margin:0 auto;}
+
+  .bottom-actions{display:flex; gap:8px; margin-top:24px; border-top:1px solid var(--line); padding-top:18px;}
+
+  /* Fullscreen barcode viewer for re-scanning */
+  .zoom-overlay{
+    position:fixed; inset:0; background:#fff; z-index:50;
+    display:flex; flex-direction:column; align-items:center;
+    padding:14px 20px 0;
+    overflow:hidden;
+  }
+  .zoom-overlay svg{width:100%; max-width:480px; height:auto;}
+  .zoom-title{font-family:'Fraunces', serif; font-weight:600; font-size:16px; margin:10px 0 2px; text-align:center; line-height:1.25; max-width:340px;}
+  .zoom-isbn{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-soft); margin-bottom:6px;}
+  .zoom-close{position:absolute; top:12px; right:14px;}
+  .zoom-hint{font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:#bbb; text-align:center; max-width:280px; line-height:1.4; margin:6px 0;}
+  .zoom-nav{
+    position:fixed; bottom:0; left:0; right:0;
+    display:flex; gap:0; border-top:1px solid var(--line);
+    background:#fff;
+  }
+  .zoom-nav button{
+    flex:1; font-family:'IBM Plex Mono', monospace; font-size:13px; font-weight:600;
+    letter-spacing:.04em; text-transform:uppercase;
+    border:none; padding:18px 10px; cursor:pointer;
+    transition: background .1s ease;
+  }
+  .zoom-nav .zprev{background:#F7F3EA; color:var(--ink);}
+  .zoom-nav .zprev:disabled{opacity:.35;}
+  .zoom-nav .znext{background:var(--stamp); color:#fff;}
+  .zoom-nav .znext.done{background:var(--cloth);}
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:var(--paper); font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px; padding:10px 18px; border-radius:4px; z-index:60;
+    opacity:0; pointer-events:none; transition:opacity .25s ease;
+  }
+  .toast.show{opacity:1;}
+
+  /* Feuille d'impression : grille d'étiquettes, générée dynamiquement */
+  #printSheet{display:none;}
+
+  @media print{
+    body{background:#fff; margin:0;}
+    .wrap > *{display:none !important;}
+    #printSheet{
+      display:grid !important;
+      grid-template-columns: repeat(3, 1fr);
+      gap:8px;
+      padding:10px;
+    }
+    .print-label{
+      border:1px dashed #888;
+      border-radius:2px;
+      padding:6px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      text-align:center;
+      break-inside:avoid;
+    }
+    .print-label img{width:100%; max-width:140px; height:auto; display:block;}
+    .print-label .pl-title{
+      font-family:Arial, sans-serif; font-size:9.5px; font-weight:600; color:#111;
+      line-height:1.2; margin-top:3px;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+    }
+    .print-label .pl-isbn{font-family:'Courier New', monospace; font-size:8.5px; color:#444; margin-top:2px;}
+  }
+  @page{ margin: 10mm; }
+</style>
+</head>
+<body>
+
+<div id="printSheet"></div>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Fichier</h1>
+    <div class="tag">Scan ISBN · Inventaire</div>
+  </header>
+
+  <div class="scanner-card" id="scannerCard">
+    <video id="video" playsinline muted style="display:none;"></video>
+    <div class="scan-overlay" id="scanOverlay" style="display:none;">
+      <div class="scan-frame"><div class="scan-line"></div></div>
+    </div>
+    <div class="scanner-idle" id="scannerIdle">
+      <p>Pointe la caméra vers le code-barres au dos d'un livre (ISBN, EAN-13).</p>
+      <button class="btn btn-stamp" id="startBtn">Démarrer le scan</button>
+    </div>
+    <div class="scanner-error" id="scannerError" style="display:none;"></div>
+  </div>
+
+  <div class="last-scan" id="lastScan"></div>
+
+  <div class="scan-controls" id="scanControls" style="display:none;">
+    <button class="btn btn-ghost" id="stopBtn" style="flex:1;">Arrêter</button>
+  </div>
+
+  <div class="manual-entry">
+    <label class="manual-label" for="manualInput">Saisie manuelle (toujours disponible)</label>
+    <div class="manual-row">
+      <input type="text" id="manualInput" inputmode="numeric" placeholder="Tape ou colle l'ISBN / code-barres ici…">
+      <button class="btn btn-stamp" id="manualAddBtn">Ajouter</button>
+    </div>
+    <p class="manual-hint">Astuce : avec l'appareil photo normal du téléphone (Google Lens), vise le code-barres → il te propose de copier le numéro → colle-le ici.</p>
+  </div>
+
+  <div class="toolbar">
+    <input class="search" id="searchInput" type="text" placeholder="Chercher par titre, auteur ou ISBN…">
+  </div>
+  <div class="filter-pills">
+    <button class="pill active" data-filter="all">Tous</button>
+    <button class="pill" data-filter="todo">À vérifier</button>
+    <button class="pill" data-filter="done">Traités</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div id="list"></div>
+
+  <div class="empty" id="emptyState" style="display:none;">
+    <p>Aucun livre pour l'instant. Scanne ton premier code-barres pour commencer le fichier.</p>
+  </div>
+
+  <div class="bottom-actions">
+    <button class="btn btn-ghost" id="printBtn" style="flex:1;">Imprimer la liste</button>
+    <button class="btn btn-ghost" id="exportBtn" style="flex:1;">Télécharger codes-barres</button>
+  </div>
+</div>
+
+<div class="zoom-overlay" id="zoomOverlay" style="display:none;">
+  <button class="btn btn-ghost zoom-close" id="zoomClose">✕ Fermer</button>
+  <div class="zoom-counter" id="zoomCounter" style="font-family:'IBM Plex Mono', monospace; font-size:11px; color:#bbb; margin-top:36px; margin-bottom:6px;"></div>
+  <div id="zoomImgWrap" style="width:100%; max-width:480px;"></div>
+  <div class="zoom-title" id="zoomTitle"></div>
+  <div class="zoom-isbn" id="zoomIsbn"></div>
+  <div class="zoom-hint">Présente ce code à l'autre téléphone (RecycLivre, Momox…) puis touche Suivant.</div>
+  <div style="height:80px;"></div><!-- espace pour la barre fixe -->
+  <div class="zoom-nav">
+    <button class="zprev" id="zoomPrev">◀ Précédent</button>
+    <button class="znext" id="zoomNext">Suivant ▶</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'livres-scan';
+  let books = [];
+  let filter = 'all';
+  let searchTerm = '';
+  let stream = null;
+  let detecting = false;
+  let lastCode = null;
+  let lastCodeTime = 0;
+
+  const $ = id => document.getElementById(id);
+  const video = $('video');
+  const scanOverlay = $('scanOverlay');
+  const scannerIdle = $('scannerIdle');
+  const scannerError = $('scannerError');
+  const scanControls = $('scanControls');
+  const lastScanEl = $('lastScan');
+  const listEl = $('list');
+  const statsEl = $('stats');
+  const emptyState = $('emptyState');
+
+  function toast(msg){
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'), 2200);
+  }
+
+  function genId(){ return 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+  async function loadBooks(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      books = raw ? JSON.parse(raw) : [];
+    }catch(e){
+      books = [];
+    }
+    render();
+  }
+
+  async function saveBooks(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
+    }catch(e){
+      toast('Échec de la sauvegarde — réessaie.');
+    }
+  }
+
+  function barcodeImageMarkup(isbn, widthAttr){
+    const canvas = document.createElement('canvas');
+    let ok = true;
+    try{
+      JsBarcode(canvas, isbn, {format:'EAN13', width:2.4, height:70, displayValue:true, fontSize:15, margin:8, background:'#ffffff', lineColor:'#2B2A28'});
+    }catch(e){
+      try{
+        JsBarcode(canvas, isbn, {format:'CODE128', width:2.4, height:70, displayValue:true, fontSize:15, margin:8, background:'#ffffff', lineColor:'#2B2A28'});
+      }catch(e2){ ok = false; }
+    }
+    if(!ok) return '<div style="font-family:monospace;font-size:11px;color:#999;">Code illisible</div>';
+    const dataUrl = canvas.toDataURL('image/png');
+    return `<img src="${dataUrl}" alt="code-barres ${isbn}" style="width:${widthAttr||'100%'};height:auto;display:block;">`;
+  }
+
+  async function lookupOpenLibrary(isbn){
+    try{
+      const r = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+      if(!r.ok) return null;
+      const data = await r.json();
+      const entry = data['ISBN:' + isbn];
+      if(!entry || !entry.title) return null;
+      return {
+        title: entry.title,
+        author: (entry.authors && entry.authors.map(a=>a.name).join(', ')) || null
+      };
+    }catch(e){
+      return null;
+    }
+  }
+
+  async function lookupGoogleBooks(isbn){
+    try{
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+      if(!r.ok) return null;
+      const data = await r.json();
+      const item = data.items && data.items[0];
+      const info = item && item.volumeInfo;
+      if(!info || !info.title) return null;
+      return {
+        title: info.title,
+        author: (info.authors && info.authors.join(', ')) || null
+      };
+    }catch(e){
+      return null;
+    }
+  }
+
+  async function lookupBnF(isbn){
+    try{
+      const url = `https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=bib.isbn%20all%20%22${isbn}%22&recordSchema=dublincore&maximumRecords=1`;
+      const r = await fetch(url);
+      if(!r.ok) return null;
+      const text = await r.text();
+      const doc = new DOMParser().parseFromString(text, 'text/xml');
+      const titleEl = doc.getElementsByTagNameNS('*','title')[0];
+      if(!titleEl || !titleEl.textContent) return null;
+      const creatorEl = doc.getElementsByTagNameNS('*','creator')[0];
+      return {
+        title: titleEl.textContent.trim(),
+        author: creatorEl ? creatorEl.textContent.trim() : null
+      };
+    }catch(e){
+      return null;
+    }
+  }
+
+  async function lookupUpcItemDb(isbn){
+    try{
+      const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${isbn}`);
+      if(!r.ok) return null;
+      const data = await r.json();
+      const item = data.items && data.items[0];
+      if(!item || !item.title) return null;
+      return {
+        title: item.title,
+        author: item.brand || null
+      };
+    }catch(e){
+      return null;
+    }
+  }
+
+  async function lookupBook(isbn){
+    const fromOpenLibrary = await lookupOpenLibrary(isbn);
+    if(fromOpenLibrary) return fromOpenLibrary;
+    const fromGoogle = await lookupGoogleBooks(isbn);
+    if(fromGoogle) return fromGoogle;
+    const fromBnF = await lookupBnF(isbn);
+    if(fromBnF) return fromBnF;
+    const fromUpcItemDb = await lookupUpcItemDb(isbn);
+    if(fromUpcItemDb) return fromUpcItemDb;
+    return null;
+  }
+
+  function calcIsbn10Check(digits9){
+    let sum = 0;
+    for(let i = 0; i < 9; i++) sum += parseInt(digits9[i]) * (i + 1);
+    const r = sum % 11;
+    return r === 10 ? 'X' : String(r);
+  }
+
+  function isbn10toEan13(isbn10){
+    const digits = isbn10.slice(0,9);
+    const base = '978' + digits;
+    let sum = 0;
+    for(let i = 0; i < 12; i++){
+      sum += parseInt(base[i]) * (i % 2 === 0 ? 1 : 3);
+    }
+    const check = (10 - (sum % 10)) % 10;
+    return base + check;
+  }
+
+  async function addBook(isbn){
+    isbn = (isbn || '').replace(/^isbn[:\s-]*/i,'').replace(/[^0-9Xx]/g,'').toUpperCase();
+    const len = isbn.length;
+    if(!isbn || (len !== 10 && len !== 13)){
+      toastError(`⚠️ ${len} chiffre${len>1?'s':''} saisi${len>1?'s':''}. Il faut exactement 10 (ISBN) ou 13 (EAN).`);
+      return;
+    }
+
+    // Convertir ISBN-10 → EAN-13
+    if(isbn.length === 10){
+      isbn = isbn10toEan13(isbn);
+      toast('Converti en EAN-13 : ' + isbn);
+    }
+    if(books.some(b => b.isbn === isbn)){
+      toast('Déjà dans le fichier — ' + isbn);
+      flashLastScan(isbn, true);
+      return;
+    }
+    const book = {
+      id: genId(),
+      isbn,
+      title: null,
+      author: null,
+      status: 'todo',
+      dateAdded: new Date().toISOString()
+    };
+    books.unshift(book);
+    render();
+    flashLastScan(isbn, false);
+    saveBooks();
+    const meta = await lookupBook(isbn);
+    if(meta){
+      const b = books.find(x=>x.id===book.id);
+      if(b){ b.title = meta.title; b.author = meta.author; render(); saveBooks(); }
+    }
+  }
+
+  function flashLastScan(isbn, dupe){
+    lastScanEl.innerHTML = dupe
+      ? `Déjà présent : <b>${isbn}</b>`
+      : `Ajouté : <b>${isbn}</b>`;
+  }
+
+  function fmtDate(iso){
+    const d = new Date(iso);
+    return d.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+  }
+
+  let lastFilteredBooks = [];
+  function render(){
+    let filtered = books.filter(b=>{
+      if(filter==='todo' && b.status!=='todo') return false;
+      if(filter==='done' && b.status!=='done') return false;
+      if(searchTerm){
+        const hay = (b.isbn + ' ' + (b.title||'') + ' ' + (b.author||'')).toLowerCase();
+        if(!hay.includes(searchTerm)) return false;
+      }
+      return true;
+    });
+    lastFilteredBooks = filtered;
+
+    const total = books.length;
+    const todo = books.filter(b=>b.status==='todo').length;
+    statsEl.innerHTML = `<span><b>${total}</b> au total</span><span><b>${todo}</b> à vérifier</span>`;
+
+    if(filtered.length === 0){
+      listEl.innerHTML = '';
+      emptyState.style.display = 'block';
+      emptyState.querySelector('p').textContent = total === 0
+        ? "Aucun livre pour l'instant. Scanne ton premier code-barres pour commencer le fichier."
+        : "Rien ne correspond à ce filtre.";
+    } else {
+      emptyState.style.display = 'none';
+      listEl.innerHTML = filtered.map(b => `
+        <div class="card ${b.status==='done' ? 'traite':''}" data-id="${b.id}">
+          <div class="card-top">
+            <div class="barcode-thumb" data-action="zoom" data-id="${b.id}">${barcodeImageMarkup(b.isbn)}</div>
+            <div class="card-info">
+              <p class="card-title">${b.title ? escapeHtml(b.title) : '<span style="color:#B8AD96;">Titre non trouvé</span>'}</p>
+              <p class="card-author">${b.author ? escapeHtml(b.author) : ''}</p>
+              <div class="card-isbn">${b.isbn}</div>
+              <div class="card-date">Scanné le ${fmtDate(b.dateAdded)}</div>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="icon-btn ${b.status==='done'?'done':''}" data-action="toggle" data-id="${b.id}">${b.status==='done' ? '✓ Traité' : 'Marquer traité'}</button>
+            <button class="icon-btn" data-action="zoom" data-id="${b.id}">Agrandir</button>
+            <button class="icon-btn" data-action="printone" data-id="${b.id}">🖨 Étiquette</button>
+            <button class="icon-btn del" data-action="delete" data-id="${b.id}">Supprimer</button>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  listEl.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-action]');
+    if(!btn) return;
+    const id = btn.dataset.id;
+    const action = btn.dataset.action;
+    const book = books.find(b=>b.id===id);
+    if(!book) return;
+    if(action==='toggle'){
+      book.status = book.status==='done' ? 'todo' : 'done';
+      render(); saveBooks();
+    } else if(action==='delete'){
+      books = books.filter(b=>b.id!==id);
+      render(); saveBooks();
+    } else if(action==='zoom'){
+      openZoom(book);
+    } else if(action==='printone'){
+      printOneLabel(book);
+    }
+  });
+
+  function printOneLabel(book){
+    const img = barcodeImageMarkup(book.isbn, '180px');
+    const title = (book.title || book.isbn).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const w = window.open('','_blank','width=420,height=320');
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body{margin:0; padding:8mm; background:#fff; font-family:Arial,sans-serif; text-align:center;}
+  img{width:180px; height:auto; display:block; margin:0 auto;}
+  .t{font-size:9pt; font-weight:bold; max-width:180px; margin:3mm auto 1mm; line-height:1.25;}
+  .i{font-family:'Courier New',monospace; font-size:8pt; color:#555;}
+  @media print{ @page{margin:4mm; size:A4;} }
+</style></head><body>
+${img}
+<div class="t">${title}</div>
+<div class="i">${book.isbn}</div>
+</body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(()=>{ try{ w.print(); }catch(e){} }, 400);
+  }
+
+  let zoomIndex = -1;
+
+  function openZoom(book){
+    zoomIndex = lastFilteredBooks.findIndex(b => b.id === book.id);
+    if(zoomIndex === -1) zoomIndex = 0;
+    showZoomAt(zoomIndex);
+    $('zoomOverlay').style.display = 'flex';
+  }
+
+  function beepError(){
+    if(navigator.vibrate) navigator.vibrate([80, 60, 80]);
+    try{
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [220, 180].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sawtooth'; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.2, ctx.currentTime + i*0.15);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i*0.15 + 0.18);
+        osc.start(ctx.currentTime + i*0.15);
+        osc.stop(ctx.currentTime + i*0.15 + 0.18);
+      });
+    }catch(e){}
+  }
+
+  function toastError(msg){
+    beepError();
+    const t = $('toast');
+    t.textContent = msg;
+    t.style.background = '#8B3A3A';
+    t.classList.add('show');
+    setTimeout(()=>{ t.classList.remove('show'); t.style.background=''; }, 3500);
+  }
+
+
+  function beepAndVibrate(){
+    if(navigator.vibrate) navigator.vibrate(40);
+    try{
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine'; osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.12);
+    }catch(e){}
+  }
+
+  function updateZoomNextBtn(idx){
+    const btn = $('zoomNext');
+    const last = (idx === lastFilteredBooks.length - 1);
+    btn.textContent = last ? '✓ Terminé' : 'Suivant ▶';
+    btn.classList.toggle('done', last);
+  }
+
+  function showZoomAt(idx){
+    if(lastFilteredBooks.length === 0) return;
+    idx = Math.max(0, Math.min(idx, lastFilteredBooks.length - 1));
+    zoomIndex = idx;
+    const book = lastFilteredBooks[idx];
+    $('zoomImgWrap').innerHTML = barcodeImageMarkup(book.isbn, '100%');
+    $('zoomTitle').textContent = book.title || 'Titre non trouvé';
+    $('zoomIsbn').textContent = book.isbn;
+    $('zoomCounter').textContent = `Livre ${idx + 1} / ${lastFilteredBooks.length}`;
+    $('zoomPrev').disabled = (idx === 0);
+    updateZoomNextBtn(idx);
+  }
+
+  $('zoomPrev').addEventListener('click', ()=>{
+    if(zoomIndex > 0){ beepAndVibrate(); showZoomAt(zoomIndex - 1); }
+  });
+  $('zoomNext').addEventListener('click', ()=>{
+    beepAndVibrate();
+    if(zoomIndex < lastFilteredBooks.length - 1){
+      showZoomAt(zoomIndex + 1);
+    } else {
+      $('zoomOverlay').style.display = 'none';
+    }
+  });
+  $('zoomClose').addEventListener('click', ()=>{ $('zoomOverlay').style.display='none'; });
+
+  // ---- Search & filters ----
+  $('searchInput').addEventListener('input', (e)=>{
+    searchTerm = e.target.value.trim().toLowerCase();
+    render();
+  });
+  document.querySelectorAll('.pill').forEach(p=>{
+    p.addEventListener('click', ()=>{
+      document.querySelectorAll('.pill').forEach(x=>x.classList.remove('active'));
+      p.classList.add('active');
+      filter = p.dataset.filter;
+      render();
+    });
+  });
+
+  // ---- Manual entry (champ visible, fiable) ----
+  const manualInput = $('manualInput');
+  const manualAddBtn = $('manualAddBtn');
+  function submitManual(){
+    const v = manualInput.value.trim();
+    if(!v){ manualInput.focus(); return; }
+    addBook(v);
+    manualInput.value = '';
+    manualInput.focus();
+  }
+  manualAddBtn.addEventListener('click', submitManual);
+  manualInput.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); submitManual(); }
+  });
+
+  // ---- Camera scanning ----
+  async function startScan(){
+    if(!('BarcodeDetector' in window)){
+      scannerIdle.style.display = 'none';
+      scannerError.style.display = 'flex';
+      scannerError.innerHTML = `<p>Ton navigateur ne sait pas lire les codes-barres nativement. Utilise Chrome sur Android, ou ajoute tes livres avec la saisie manuelle ci-dessous.</p>`;
+      return;
+    }
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    }catch(e){
+      scannerIdle.style.display = 'none';
+      scannerError.style.display = 'flex';
+      scannerError.innerHTML = `<p>Accès à la caméra refusé. Autorise la caméra dans les réglages du navigateur, ou utilise la saisie manuelle.</p>`;
+      return;
+    }
+    video.srcObject = stream;
+    video.style.display = 'block';
+    scanOverlay.style.display = 'flex';
+    scannerIdle.style.display = 'none';
+    scanControls.style.display = 'flex';
+    await video.play();
+
+    const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128'] });
+    detecting = true;
+    scanLoop(detector);
+  }
+
+  async function scanLoop(detector){
+    if(!detecting) return;
+    try{
+      const codes = await detector.detect(video);
+      if(codes && codes.length){
+        const value = codes[0].rawValue;
+        const now = Date.now();
+        if(value !== lastCode || now - lastCodeTime > 2500){
+          lastCode = value;
+          lastCodeTime = now;
+          addBook(value);
+          if(navigator.vibrate) navigator.vibrate(60);
+        }
+      }
+    }catch(e){ /* ignore single-frame errors */ }
+    requestAnimationFrame(()=>scanLoop(detector));
+  }
+
+  function stopScan(){
+    detecting = false;
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    video.style.display = 'none';
+    scanOverlay.style.display = 'none';
+    scannerIdle.style.display = 'flex';
+    scannerError.style.display = 'none';
+    scanControls.style.display = 'none';
+    lastScanEl.innerHTML = '';
+  }
+
+  $('startBtn').addEventListener('click', startScan);
+  $('stopBtn').addEventListener('click', stopScan);
+
+  // ---- Print & export ----
+  $('printBtn').addEventListener('click', ()=>{
+    if(books.length === 0){ toast('Aucun livre à imprimer.'); return; }
+    const sheet = $('printSheet');
+    sheet.innerHTML = books.map(b => `
+      <div class="print-label">
+        ${barcodeImageMarkup(b.isbn, '140px')}
+        <div class="pl-title">${escapeHtml(b.title || b.isbn)}</div>
+        <div class="pl-isbn">${b.isbn}</div>
+      </div>
+    `).join('');
+    window.print();
+  });
+  $('exportBtn').addEventListener('click', ()=>{
+    if(books.length === 0){ toast('Aucun livre à exporter.'); return; }
+    const labels = books.map(b => {
+      const img = barcodeImageMarkup(b.isbn, '150px');
+      const title = b.title ? b.title.replace(/</g,'&lt;').replace(/>/g,'&gt;') : b.isbn;
+      return `<div class="lbl">${img}<div class="lt">${title}</div><div class="li">${b.isbn}</div></div>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>Codes-barres livres — ${new Date().toLocaleDateString('fr-FR')}</title>
+<style>
+  body{margin:0; padding:10mm; background:#fff; font-family:Arial,sans-serif;}
+  .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:6mm;}
+  .lbl{border:1px dashed #aaa; border-radius:2px; padding:4mm; text-align:center; break-inside:avoid;}
+  .lbl img{width:100%; max-width:150px; height:auto; display:block; margin:0 auto;}
+  .lt{font-size:8pt; font-weight:bold; color:#111; line-height:1.2; margin-top:2mm;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .li{font-family:'Courier New',monospace; font-size:7pt; color:#555; margin-top:1mm;}
+  @media print{ body{padding:8mm;} @page{margin:8mm;} }
+</style></head><body>
+<div class="grid">${labels}</div>
+</body></html>`;
+    const blob = new Blob([html], {type:'text/html;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `codes-barres-livres-${new Date().toISOString().slice(0,10)}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Fichier téléchargé — ouvre-le dans Chrome pour imprimer ou conserver.');
+  });
+
+  if(typeof JsBarcode === 'undefined'){
+    toast("Erreur : la bibliothèque de codes-barres ne s'est pas chargée (vérifie ta connexion internet).");
+  }
+  loadBooks();
+})();
+</script>
+</body>
+</html>
